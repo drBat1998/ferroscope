@@ -21,10 +21,21 @@ class Image:
     pixel_size: tuple[float | None, float | None, float | None] = (None, None, None)
     source: str | Path | None = None
     scene: str | None = None
-    
+
     def __post_init__(self):
         if len(self.dims) != self.data.ndim:
             raise ValueError("Dims is not good")
+
+    @property
+    def channel_axis(self) -> int | None:
+        return self.dims.index("C") if "C" in self.dims else None
+
+    @property
+    def axis_scale(self) -> dict[str, float]:
+        """µm per pixel for every axis; 1.0 where unknown or non-spatial (T, C)."""
+        z, y, x = self.pixel_size
+        lookup = {"Z": z, "Y": y, "X": x}
+        return {d: (lookup.get(d) or 1.0) for d in self.dims}
 
 
 def detect_format(path: str | Path) -> str:
@@ -54,7 +65,8 @@ def _um(value):
     """bioio gives 0.0 ..."""
     return float(value) if value else None
 
-def _open(path: str | Path) ->  tuple[Path,str,BioImage]:
+
+def _open(path: str | Path) -> tuple[Path, str, BioImage]:
     path_file = Path(path).expanduser()
 
     if not path_file.exists():
@@ -67,7 +79,6 @@ def describe_image(path: str | Path) -> dict:
 
     path_file, fmt, img = _open(path)
 
-    img = BioImage(path)
     scenes = []
     for i, scene_id in enumerate(img.scenes):
         img.set_scene(i)
@@ -93,18 +104,17 @@ def describe_image(path: str | Path) -> dict:
     }
 
 
-
 def load_scene(path: str | Path, scene: int | str = 0) -> Image:
-        """Open one scene lazily. ``scene``: index (0, 1, ...) or id ("P3-B3")."""
-        path_file, fmt, img = _open(path)
-        img.set_scene(scene)
-        pps = img.physical_pixel_sizes
+    """Open one scene lazily. ``scene``: index (0, 1, ...) or id ("P3-B3")."""
+    path_file, fmt, img = _open(path)
+    img.set_scene(scene)
+    pps = img.physical_pixel_sizes
 
-        return Image(
-            data=img.dask_data,
-            dims=tuple(img.dims.order),
-            channel_names=[str(c) for c in img.channel_names],
-            pixel_size=(_um(pps.Z), _um(pps.Y), _um(pps.X)),
-            source=path_file,
-            scene=str(img.current_scene),
-        )
+    return Image(
+        data=img.dask_data,
+        dims=tuple(img.dims.order),
+        channel_names=[str(c) for c in img.channel_names],
+        pixel_size=(_um(pps.Z), _um(pps.Y), _um(pps.X)),
+        source=path_file,
+        scene=str(img.current_scene),
+    )

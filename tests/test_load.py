@@ -39,11 +39,11 @@ def test_load_reads_correct_pixels(tmp_path):
 def test_load_is_lazy(ome_tiff):
     with CountTasks() as counter:
         img = load_scene(ome_tiff)
-        plane = img.data[1, 2, 3]          # selecting must not read anything
+        plane = img.data[1, 2, 3]  # selecting must not read anything
     assert counter.n == 0
 
     with CountTasks() as counter:
-        plane.compute()                    # only now pixels are read
+        plane.compute()  # only now pixels are read
     assert counter.n > 0
 
 

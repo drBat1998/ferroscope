@@ -6,10 +6,8 @@ import pytest
 def arr():
     return np.arange(2 * 3 * 1 * 8 * 8, dtype=np.uint16).reshape(2, 3, 1, 8, 8)
 
+
 import tifffile
-
-
-
 
 from ferroscope.io import describe_image
 

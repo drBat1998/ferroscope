@@ -20,7 +20,8 @@ class Image:
     channel_names: list = field(default_factory=list)
     pixel_size: tuple[float | None, float | None, float | None] = (None, None, None)
     source: str | Path | None = None
-
+    scene: str | None = None
+    
     def __post_init__(self):
         if len(self.dims) != self.data.ndim:
             raise ValueError("Dims is not good")
@@ -53,12 +54,18 @@ def _um(value):
     """bioio gives 0.0 ..."""
     return float(value) if value else None
 
+def _open(path: str | Path) ->  tuple[Path,str,BioImage]:
+    path_file = Path(path).expanduser()
+
+    if not path_file.exists():
+        raise FileNotFoundError(f" no such file:{path_file}")
+    fmt = detect_format(path_file)
+    return path_file, fmt, BioImage(path_file)
+
 
 def describe_image(path: str | Path) -> dict:
-    path_file = Path(path).expanduser()
-    if not path_file.exists():
-        raise FileNotFoundError(f"no such file: {path_file}")
-    fmt = detect_format(path_file)
+
+    path_file, fmt, img = _open(path)
 
     img = BioImage(path)
     scenes = []
@@ -84,3 +91,20 @@ def describe_image(path: str | Path) -> dict:
         "n_scenes": len(scenes),
         "scenes": scenes,
     }
+
+
+
+def load_scene(path: str | Path, scene: int | str = 0) -> Image:
+        """Open one scene lazily. ``scene``: index (0, 1, ...) or id ("P3-B3")."""
+        path_file, fmt, img = _open(path)
+        img.set_scene(scene)
+        pps = img.physical_pixel_sizes
+
+        return Image(
+            data=img.dask_data,
+            dims=tuple(img.dims.order),
+            channel_names=[str(c) for c in img.channel_names],
+            pixel_size=(_um(pps.Z), _um(pps.Y), _um(pps.X)),
+            source=path_file,
+            scene=str(img.current_scene),
+        )

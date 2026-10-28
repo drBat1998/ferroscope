@@ -29,4 +29,5 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.2.0",
     "ruff>=0.17.3",
+    "tifffile>=2026.10.15",
 ]

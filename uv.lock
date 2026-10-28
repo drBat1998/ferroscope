@@ -669,6 +669,7 @@ dependencies = [
 dev = [
     { name = "pytest" },
     { name = "ruff" },
+    { name = "tifffile" },
 ]
 
 [package.metadata]
@@ -690,6 +691,7 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "ruff", specifier = ">=0.17.3" },
+    { name = "tifffile", specifier = ">=2026.10.15" },
 ]
 
 [[package]]

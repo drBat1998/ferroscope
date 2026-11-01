@@ -60,6 +60,7 @@ class SceneBrowser:
         self.viewer.title = (
             f"{Path(self.path).name} | {img.scene} ({index + 1}/{len(self.scenes)})"
         )
+
     def go_to(self, scene_id: str) -> None:
         self.go(self.scenes.index(scene_id))
 

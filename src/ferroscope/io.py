@@ -106,7 +106,7 @@ def describe_image(path: str | Path) -> dict:
 
 def load_scene(path: str | Path, scene: int | str = 0) -> Image:
     """Open one scene lazily. ``scene``: index (0, 1, ...) or id ("P3-B3")."""
-    path_file, fmt, img = _open(path)
+    path_file, _, img = _open(path)
     img.set_scene(scene)
     pps = img.physical_pixel_sizes
 

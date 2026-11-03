@@ -56,3 +56,40 @@ def crop_box(
     crop_x = _axis_slice(center_x, size_x, shape_x)
 
     return (crop_y, crop_x)
+
+
+import math
+import re
+
+_TOKEN = re.compile(r"\s*(\d+)\s*(?:-\s*(\d+)\s*)?", re.ASCII)
+
+
+def parse_indices(text: str, n: int) -> list[int]:
+    # 1. n <= 0            → ValueError with n
+    if n <= 0:
+        raise ValueError("n can not be equal or smaller to zero")
+    # 2. text.strip() == "" → ValueError mentioning "empty"
+    if text.strip() == "":
+        raise ValueError("input is empty")
+    # 3. "all"             → return list(range(n))
+    if text.strip().lower() == "all":
+        return list(range(n))
+
+    selected = set()
+    for piece in text.split(","):
+        match = _TOKEN.fullmatch(piece)
+        # 4. match is None  → ValueError with piece
+        if match is None:
+            raise ValueError(f"cannot read {piece!r} (use e.g. 0,5,10-20)")        
+
+        start = int(match[1])
+        end = int(match[2]) if match[2] is not None else start
+        # 5. end < start    → ValueError with piece
+        if end < start:
+            raise ValueError(f"range {piece.strip()!r} goes backwards")
+        # 6. end >= n       → ValueError with end and n
+        if end >= n:
+            raise ValueError(f"index {end} out of range: {n} time points (0..{n - 1})")
+        selected.update(range(start, end + 1))
+
+    return sorted(selected)

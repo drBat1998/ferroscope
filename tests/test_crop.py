@@ -15,12 +15,19 @@ Step 2 — crop_box(center_yx, size_yx, shape_yx) -> (slice_y, slice_x):
 - Size larger than the image -> ValueError mentioning "larger".
 - Zero or negative size -> ValueError mentioning "size".
 - box -> rectangle centre -> box gives back the same box (no drift on redraw).
+
+Step 3 — parse_indices(text, n) -> sorted list of unique ints:
+- 0-based, like the napari slider (ZEN counts from 1, napari from 0).
+- "0,5,9" single indices, "2-5" inclusive ranges, mixed freely.
+- Spaces allowed around numbers and the dash, never between two digits ("1 2").
+- "all" (any case) -> every index; empty text -> ValueError mentioning "empty".
+- Out of range, backwards ranges and garbled pieces -> ValueError with the bad value.
 """
 
 import numpy as np
 import pytest
 
-from ferroscope.crop import crop_box, px_to_um, um_to_px
+from ferroscope.crop import crop_box, parse_indices, px_to_um, um_to_px
 
 # ---------------------------------------------------------------- um_to_px
 
@@ -233,3 +240,107 @@ def test_crop_box_is_stable_under_redraw(start, h):
     sy, sx = crop_box((centre, centre), (h, h), (200, 200))
     assert sy == slice(start, start + h)
     assert sx == slice(start, start + h)
+
+
+# ---------------------------------------------------------------- parse_indices
+
+N = 10
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("3", [3]),
+        ("0", [0]),  # 0-based: first time point
+        ("9", [9]),  # last time point when n = 10
+        ("0,5,9", [0, 5, 9]),
+        ("2-5", [2, 3, 4, 5]),  # both ends included
+        ("4-4", [4]),  # range of one
+        ("0,5,7-9", [0, 5, 7, 8, 9]),
+    ],
+)
+def test_parse_indices_basic(text, expected):
+    assert parse_indices(text, N) == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("5,1,3", [1, 3, 5]),  # sorted
+        ("2,2,2", [2]),  # duplicates removed
+        ("1-4,3-6", [1, 2, 3, 4, 5, 6]),  # overlapping ranges merged
+        ("7-9,0", [0, 7, 8, 9]),
+    ],
+)
+def test_parse_indices_sorted_and_unique(text, expected):
+    assert parse_indices(text, N) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [" 0 , 5 - 7 ", "0,5-7", "0 ,5 -7", "\t0,5-7\n"],
+)
+def test_parse_indices_allows_spaces_around_numbers(text):
+    assert parse_indices(text, N) == [0, 5, 6, 7]
+
+
+@pytest.mark.parametrize("text", ["all", "ALL", " All "])
+def test_parse_indices_all(text):
+    assert parse_indices(text, N) == list(range(N))
+
+
+@pytest.mark.parametrize("text", ["", "   "])
+def test_parse_indices_empty_raises(text):
+    with pytest.raises(ValueError, match="empty"):
+        parse_indices(text, N)
+
+
+@pytest.mark.parametrize("text, bad", [("10", "10"), ("8-12", "12"), ("0,99", "99")])
+def test_parse_indices_out_of_range_raises(text, bad):
+    with pytest.raises(ValueError, match=bad):
+        parse_indices(text, N)
+
+
+def test_parse_indices_backwards_range_raises():
+    with pytest.raises(ValueError, match="5-2"):
+        parse_indices("5-2", N)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "a",
+        "1 2",  # forgotten comma must NOT become 12
+        "1,,2",
+        "1,",
+        ",1",
+        "1-",
+        "-1",  # negative
+        "1--3",
+        "1-2-3",
+        "1.5",
+        "+3",
+        "²",  # Unicode digit
+        "all,3",
+    ],
+)
+def test_parse_indices_garbled_raises(text):
+    with pytest.raises(ValueError):
+        parse_indices(text, N)
+
+
+def test_parse_indices_garbled_message_contains_piece():
+    with pytest.raises(ValueError, match="abc"):
+        parse_indices("0,abc,5", N)
+
+
+@pytest.mark.parametrize("n", [0, -3])
+def test_parse_indices_bad_n_raises(n):
+    with pytest.raises(ValueError):
+        parse_indices("0", n)
+
+
+def test_parse_indices_returns_plain_int_list():
+    result = parse_indices("0,3-5", N)
+    assert isinstance(result, list)
+    assert all(type(i) is int for i in result)

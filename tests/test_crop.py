@@ -22,12 +22,22 @@ Step 3 — parse_indices(text, n) -> sorted list of unique ints:
 - Spaces allowed around numbers and the dash, never between two digits ("1 2").
 - "all" (any case) -> every index; empty text -> ValueError mentioning "empty".
 - Out of range, backwards ranges and garbled pieces -> ValueError with the bad value.
+
+Step 4 — crop_image(img, box, channels, times) -> new lazy Image:
+- Only TCZYX images; anything else -> ValueError mentioning "TCZYX".
+- Channels by name, kept in file order; unknown / duplicate / none -> ValueError.
+- Times by index; out of range / none -> ValueError with the bad value.
+- Box must lie inside Y and X and not be empty (dask would silently clip).
+- All Z kept; data stays lazy; pixel_size, source, scene carried over.
+- The original Image is never changed.
 """
 
+import dask.array as da
 import numpy as np
 import pytest
 
-from ferroscope.crop import crop_box, parse_indices, px_to_um, um_to_px
+from ferroscope.crop import crop_box, crop_image, parse_indices, px_to_um, um_to_px
+from ferroscope.io import Image
 
 # ---------------------------------------------------------------- um_to_px
 
@@ -344,3 +354,153 @@ def test_parse_indices_returns_plain_int_list():
     result = parse_indices("0,3-5", N)
     assert isinstance(result, list)
     assert all(type(i) is int for i in result)
+
+
+# ---------------------------------------------------------------- crop_image
+
+NAMES = ["AO_red", "AO_green", "DRAQ7"]
+BOX = (slice(4, 14), slice(10, 25))  # 10 x 15 px
+
+
+@pytest.fixture
+def plane_stack():
+    # T=5, C=3, Z=2, Y=20, X=30; every pixel has a unique value
+    return np.arange(5 * 3 * 2 * 20 * 30, dtype=np.uint16).reshape(5, 3, 2, 20, 30)
+
+
+@pytest.fixture
+def img(plane_stack):
+    return Image(
+        data=da.from_array(plane_stack, chunks=(1, 1, 1, 20, 30)),
+        dims=("T", "C", "Z", "Y", "X"),
+        channel_names=list(NAMES),
+        pixel_size=(2.0, 0.4536, 0.4536),
+        source="PL1_live.czi",
+        scene="P3-B3",
+    )
+
+
+def test_crop_image_returns_image_with_right_shape(img):
+    out = crop_image(img, BOX, ["AO_red", "DRAQ7"], [0, 3, 4])
+    assert isinstance(out, Image)
+    assert out.data.shape == (3, 2, 2, 10, 15)  # T, C, all Z, Y, X
+    assert out.dims == ("T", "C", "Z", "Y", "X")
+
+
+def test_crop_image_values_match_numpy(img, plane_stack):
+    out = crop_image(img, BOX, ["AO_green", "DRAQ7"], [1, 4])
+    expected = plane_stack[[1, 4]][:, [1, 2]][..., 4:14, 10:25]
+    np.testing.assert_array_equal(out.data.compute(), expected)
+
+
+def test_crop_image_stays_lazy(img):
+    out = crop_image(img, BOX, ["DRAQ7"], [0])
+    assert isinstance(out.data, da.Array)
+
+
+def test_crop_image_never_reads_a_huge_lazy_image():
+    # ~160 GB if it were ever computed; cropping must only build the graph
+    huge = Image(
+        data=da.zeros((100, 4, 1, 20000, 20000), dtype=np.uint16, chunks=(1, 1, 1, 2048, 2048)),
+        dims=("T", "C", "Z", "Y", "X"),
+        channel_names=["a", "b", "c", "d"],
+    )
+    out = crop_image(huge, (slice(0, 100), slice(0, 100)), ["b"], [0, 99])
+    assert out.data.shape == (2, 1, 1, 100, 100)
+
+
+def test_crop_image_channels_kept_in_file_order(img, plane_stack):
+    out = crop_image(img, BOX, ["DRAQ7", "AO_red"], [0])  # asked in reverse
+    assert out.channel_names == ["AO_red", "DRAQ7"]
+    expected = plane_stack[[0]][:, [0, 2]][..., 4:14, 10:25]
+    np.testing.assert_array_equal(out.data.compute(), expected)
+
+
+def test_crop_image_carries_metadata_over(img):
+    out = crop_image(img, BOX, ["DRAQ7"], [2])
+    assert out.pixel_size == (2.0, 0.4536, 0.4536)
+    assert out.source == "PL1_live.czi"
+    assert out.scene == "P3-B3"
+
+
+def test_crop_image_does_not_change_the_original(img, plane_stack):
+    crop_image(img, BOX, ["DRAQ7"], [2])
+    assert img.data.shape == (5, 3, 2, 20, 30)
+    assert img.channel_names == NAMES
+
+
+def test_crop_image_channel_names_are_a_new_list(img):
+    out = crop_image(img, BOX, list(NAMES), [0])
+    out.channel_names.append("extra")
+    assert img.channel_names == NAMES
+
+
+def test_crop_image_all_channels_and_times_only_crops_yx(img, plane_stack):
+    out = crop_image(img, BOX, list(NAMES), list(range(5)))
+    np.testing.assert_array_equal(out.data.compute(), plane_stack[..., 4:14, 10:25])
+
+
+def test_crop_image_unknown_channel_raises(img):
+    with pytest.raises(ValueError, match="PI"):
+        crop_image(img, BOX, ["PI"], [0])
+
+
+def test_crop_image_unknown_channel_message_lists_available(img):
+    with pytest.raises(ValueError, match="DRAQ7"):
+        crop_image(img, BOX, ["PI"], [0])
+
+
+def test_crop_image_duplicate_channel_raises(img):
+    with pytest.raises(ValueError, match="AO_red"):
+        crop_image(img, BOX, ["AO_red", "AO_red"], [0])
+
+
+def test_crop_image_no_channels_raises(img):
+    with pytest.raises(ValueError, match="channel"):
+        crop_image(img, BOX, [], [0])
+
+
+@pytest.mark.parametrize("times, bad", [([5], "5"), ([0, 7], "7"), ([-1], "-1")])
+def test_crop_image_time_out_of_range_raises(img, times, bad):
+    with pytest.raises(ValueError, match=bad):
+        crop_image(img, BOX, ["DRAQ7"], times)
+
+
+def test_crop_image_no_times_raises(img):
+    with pytest.raises(ValueError, match="time"):
+        crop_image(img, BOX, ["DRAQ7"], [])
+
+
+@pytest.mark.parametrize(
+    "box",
+    [
+        (slice(15, 25), slice(0, 10)),  # past the bottom (Y = 20)
+        (slice(0, 10), slice(25, 35)),  # past the right (X = 30)
+        (slice(-2, 8), slice(0, 10)),  # negative start
+        (slice(5, 5), slice(0, 10)),  # empty
+    ],
+)
+def test_crop_image_box_outside_or_empty_raises(img, box):
+    with pytest.raises(ValueError, match="box"):
+        crop_image(img, box, ["DRAQ7"], [0])
+
+
+def test_crop_image_accepts_a_box_from_crop_box(img):
+    box = crop_box((19.0, 29.0), (10, 15), (20, 30))  # bottom-right corner
+    out = crop_image(img, box, ["DRAQ7"], [0])
+    assert out.data.shape[-2:] == (10, 15)
+
+
+def test_crop_image_wrong_dims_raises():
+    other = Image(data=da.zeros((3, 20, 30), dtype=np.uint16), dims=("C", "Y", "X"))
+    with pytest.raises(ValueError, match="TCZYX"):
+        crop_image(other, BOX, ["a"], [0])
+
+
+def test_crop_image_exports_with_existing_export_tiff_planes(img, tmp_path):
+    from ferroscope.export import export_tiff_planes
+
+    out = crop_image(img, BOX, ["AO_red", "DRAQ7"], [0, 3])
+    written = export_tiff_planes(out, tmp_path)
+    assert len(written) == 2 * 2 * 2  # T x C x Z
+    assert all(p.exists() for p in written)

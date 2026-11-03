@@ -1,5 +1,6 @@
 import math
-
+import re 
+from ferroscope.io import Image
 
 def um_to_px(size_um: float, pixel_um: float | None) -> int:
 
@@ -93,3 +94,41 @@ def parse_indices(text: str, n: int) -> list[int]:
         selected.update(range(start, end + 1))
 
     return sorted(selected)
+
+
+
+def crop_image(img: Image, box: tuple[slice, slice],
+               channels: list[str], times: list[int]) -> Image:
+    raise NotImplementedError
+
+
+def crop_image(img: Image, box: tuple[slice, slice],
+               channels: list[str], times: list[int]) -> Image:
+    # 1. dims must be ("T", "C", "Z", "Y", "X")  → ValueError mentioning "TCZYX"
+    n_t, _, _, n_y, n_x = img.data.shape
+    
+    # 2. channels: empty → "channel"; unknown name → name + img.channel_names;
+    #    the same name twice → that name
+
+    # 3. times: empty → "time"; any t outside 0..n_t-1 → that t
+
+    # 4. box: for (sy, n_y) and (sx, n_x): start >= 0, stop <= n, stop > start
+    #    → otherwise ValueError mentioning "box"
+    sy, sx = box
+
+    # 5. channel indices in FILE order
+    c_idx = [i for i, name in enumerate(img.channel_names) if name in channels]
+
+    # 6. index one step at a time
+    data = img.data[list(times)]
+    data = data[:, c_idx]
+    data = data[..., sy, sx]
+
+    return Image(
+        data=data,
+        dims=img.dims,
+        channel_names=[img.channel_names[i] for i in c_idx],
+        pixel_size=img.pixel_size,
+        source=img.source,
+        scene=img.scene,
+    )

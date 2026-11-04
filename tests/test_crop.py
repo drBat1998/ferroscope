@@ -401,7 +401,9 @@ def test_crop_image_stays_lazy(img):
 def test_crop_image_never_reads_a_huge_lazy_image():
     # ~160 GB if it were ever computed; cropping must only build the graph
     huge = Image(
-        data=da.zeros((100, 4, 1, 20000, 20000), dtype=np.uint16, chunks=(1, 1, 1, 2048, 2048)),
+        data=da.zeros(
+            (100, 4, 1, 20000, 20000), dtype=np.uint16, chunks=(1, 1, 1, 2048, 2048)
+        ),
         dims=("T", "C", "Z", "Y", "X"),
         channel_names=["a", "b", "c", "d"],
     )

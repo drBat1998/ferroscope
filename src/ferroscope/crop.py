@@ -1,6 +1,8 @@
 import math
-import re 
+import re
+
 from ferroscope.io import Image
+
 
 def um_to_px(size_um: float, pixel_um: float | None) -> int:
 
@@ -59,9 +61,6 @@ def crop_box(
     return (crop_y, crop_x)
 
 
-import math
-import re
-
 _TOKEN = re.compile(r"\s*(\d+)\s*(?:-\s*(\d+)\s*)?", re.ASCII)
 
 
@@ -81,7 +80,7 @@ def parse_indices(text: str, n: int) -> list[int]:
         match = _TOKEN.fullmatch(piece)
         # 4. match is None  → ValueError with piece
         if match is None:
-            raise ValueError(f"cannot read {piece!r} (use e.g. 0,5,10-20)")        
+            raise ValueError(f"cannot read {piece!r} (use e.g. 0,5,10-20)")
 
         start = int(match[1])
         end = int(match[2]) if match[2] is not None else start
@@ -96,30 +95,42 @@ def parse_indices(text: str, n: int) -> list[int]:
     return sorted(selected)
 
 
+def crop_image(
+    img: Image, box: tuple[slice, slice], channels: list[str], times: list[int]
+) -> Image:
 
-def crop_image(img: Image, box: tuple[slice, slice],
-               channels: list[str], times: list[int]) -> Image:
-    raise NotImplementedError
-
-
-def crop_image(img: Image, box: tuple[slice, slice],
-               channels: list[str], times: list[int]) -> Image:
-    # 1. dims must be ("T", "C", "Z", "Y", "X")  → ValueError mentioning "TCZYX"
+    if img.dims != ("T", "C", "Z", "Y", "X"):
+        raise ValueError(f"crop_image needs TCZYX, got {img.dims}")
     n_t, _, _, n_y, n_x = img.data.shape
-    
-    # 2. channels: empty → "channel"; unknown name → name + img.channel_names;
-    #    the same name twice → that name
 
-    # 3. times: empty → "time"; any t outside 0..n_t-1 → that t
+    if not channels:
+        raise ValueError("no channel selected")
 
-    # 4. box: for (sy, n_y) and (sx, n_x): start >= 0, stop <= n, stop > start
-    #    → otherwise ValueError mentioning "box"
+    for name in channels:
+        if name not in img.channel_names:
+            raise ValueError(
+                f"unknown channel {name!r}, available: {img.channel_names}"
+            )
+
+    if len(set(channels)) != len(channels):
+        dup = next(name for name in channels if channels.count(name) > 1)
+        raise ValueError(f"channel {dup!r} selected twice")
+
+    if not times:
+        raise ValueError("no time point selected")
+
+    for t in times:
+        if not 0 <= t < n_t:
+            raise ValueError(f"time point {t} out of range (0..{n_t - 1})")
+
     sy, sx = box
 
-    # 5. channel indices in FILE order
+    for s, n in ((sy, n_y), (sx, n_x)):
+        if s.start < 0 or s.stop > n or s.stop <= s.start:
+            raise ValueError(f"box {box} outside or empty for image {n_y} x {n_x}")
+
     c_idx = [i for i, name in enumerate(img.channel_names) if name in channels]
 
-    # 6. index one step at a time
     data = img.data[list(times)]
     data = data[:, c_idx]
     data = data[..., sy, sx]

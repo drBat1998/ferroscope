@@ -17,6 +17,7 @@ dependencies = [
     "dataclasses>=0.8",
     "numpy>=2.5.4",
     "pathlib>=1.0.1",
+    "pillow>=13.0.0",
     "pytest>=9.2.0",
     "tifffile>=2026.10.15",
 ]

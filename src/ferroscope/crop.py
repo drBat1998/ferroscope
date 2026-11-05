@@ -204,6 +204,8 @@ def crop_record(
         "channels": channels,
     }
 
+import pathlib as Path
+
 
 def write_crop_json(record: dict, path: str | Path) -> None:
     path = Path(path).expanduser()

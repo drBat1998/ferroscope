@@ -10,7 +10,7 @@ from PIL import Image as PILImage
 
 from ferroscope.crop import crop_image
 from ferroscope.io import Image, describe_image, load_scene
-from ferroscope.render import apply_lut, to_uint8
+from ferroscope.render import apply_lut, composite, to_uint8
 
 
 def _check_color(name: str, color) -> list[int]:
@@ -101,8 +101,10 @@ def export_display(
     gamma: dict | None = None,
     z: int = 0,
     t_labels: list[int] | None = None,
+    singles: bool = True,
+    merge: bool = False,
 ) -> list[Path]:
-    """One RGB PNG per T x C of plane z, coloured with each channel's LUT.
+    """RGB PNGs of plane z: one per T x C (singles) and/or one mix of all C per T (merge).
 
     limits: {channel: (lo, hi)}, luts: {channel: (256, 3) uint8},
     gamma: {channel: float}, missing channels use 1.0.
@@ -110,6 +112,8 @@ def export_display(
     n_t, n_c, n_z = img.data.shape[:3]
 
     # --- check everything BEFORE writing anything ---
+    if not singles and not merge:
+        raise ValueError("nothing to write: choose singles, merge or both")
     if not 0 <= z < n_z:
         raise ValueError(f"z {z} out of range (0..{n_z - 1})")
     t_labels = _check_t_labels(t_labels, n_t)
@@ -131,16 +135,23 @@ def export_display(
     stem = f"{Path(img.source).stem}_{img.scene}"
 
     written = []
-    for t, c in product(range(n_t), range(n_c)):
-        name = img.channel_names[c]
-        lo, hi = limits[name]
-        plane = np.asarray(img.data[t, c, z])  # reads just this one plane
-        rgb = apply_lut(to_uint8(plane, lo, hi, gamma.get(name, 1.0)), luts[name])
-        path = out_dir / f"{stem}_T{t_labels[t]:03d}_{name}_Z{z:03d}.png"
-        PILImage.fromarray(rgb).save(path)
-        written.append(path)
+    for t in range(n_t):
+        rgbs = []
+        for c in range(n_c):
+            name = img.channel_names[c]
+            lo, hi = limits[name]
+            plane = np.asarray(img.data[t, c, z])  # reads just this one plane
+            rgb = apply_lut(to_uint8(plane, lo, hi, gamma.get(name, 1.0)), luts[name])
+            rgbs.append(rgb)
+            if singles:
+                path = out_dir / f"{stem}_T{t_labels[t]:03d}_{name}_Z{z:03d}.png"
+                PILImage.fromarray(rgb).save(path)
+                written.append(path)
+        if merge:
+            path = out_dir / f"{stem}_T{t_labels[t]:03d}_merge_Z{z:03d}.png"
+            PILImage.fromarray(composite(rgbs)).save(path)
+            written.append(path)
     return written
-
 
 def crop_record(
     crop: Image,
@@ -227,13 +238,15 @@ class CropExport:
     luts: dict | None = None  # {channel: (256, 3) uint8}, needed for display
     gamma: dict | None = None  # {channel: float}, missing → 1.0
 
+    merge: bool = False  # one PNG per T mixing all chosen channels
+
     def __post_init__(self):
-        if not self.raw and not self.display:
-            raise ValueError("nothing to export: choose raw, display or both")
-        if self.display and self.limits is None:
-            raise ValueError("display export needs limits")
-        if self.display and self.luts is None:
-            raise ValueError("display export needs luts")
+        if not (self.raw or self.display or self.merge):
+            raise ValueError("nothing to export: choose raw, display, merge")
+        if (self.display or self.merge) and self.limits is None:
+            raise ValueError("display/merge export needs limits")
+        if (self.display or self.merge) and self.luts is None:
+            raise ValueError("display/merge export needs luts")
 
 
 def crop_folder_name(img: Image, box: tuple[slice, slice]) -> str:
@@ -258,16 +271,17 @@ def export_crop(img: Image, settings: CropExport, folder: str | Path) -> Path:
         s.box,
         t_labels,
         z=s.z,
-        limits=s.limits if s.display else None,
+        limits=s.limits if (s.display or s.merge) else None,
         luts=s.luts,
         gamma=s.gamma,
     )
 
     # display FIRST: it checks limits/gamma/LUTs before writing anything
-    if s.display:
+    if s.display or s.merge:
         export_display(
             crop, folder / "display", s.limits, s.luts,
             gamma=s.gamma, z=s.z, t_labels=t_labels,
+            singles=s.display, merge=s.merge,
         )
     if s.raw:
         colors = None if s.luts is None else {n: lut[-1] for n, lut in s.luts.items()}

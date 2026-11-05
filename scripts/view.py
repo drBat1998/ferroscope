@@ -2,6 +2,7 @@ import napari
 from magicgui.widgets import ComboBox
 
 from ferroscope.colors import COLOR_KEYS, default_color, parse_color
+from ferroscope.crop_widget import CropWidget
 from ferroscope.io import load_scene
 from ferroscope.viewer import SceneBrowser
 
@@ -34,6 +35,8 @@ browser.go(0)
 combo = ComboBox(choices=browser.scenes, label="Scene")
 combo.changed.connect(browser.go_to)
 viewer.window.add_dock_widget(combo, area="right", name="Scenes")
+crop = CropWidget(viewer, get_image=lambda: browser.image)
+viewer.window.add_dock_widget(crop, area="right", name="Crop")
 
 
 # Step 3: PageDown / PageUp move the dropdown, so both stay in sync

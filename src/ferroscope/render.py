@@ -3,7 +3,7 @@ import numpy as np
 
 def to_uint8(plane, lo, hi, gamma=1.0) -> np.ndarray:
     if lo >= hi:
-        f"lo must be < hi, got lo={lo}, hi={hi}"
+        raise ValueError(f"lo must be < hi, got lo={lo}, hi={hi}")    
     if gamma <= 0:
         raise ValueError("Gamma is lower than 0")
     float_plane = plane.astype(np.float64)

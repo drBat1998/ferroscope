@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
 
@@ -7,6 +8,7 @@ from bioio_base.types import PhysicalPixelSizes
 from bioio_ome_tiff.writers import OmeTiffWriter
 from PIL import Image as PILImage
 
+from ferroscope.crop import crop_image
 from ferroscope.io import Image, describe_image, load_scene
 from ferroscope.render import apply_lut, to_uint8
 
@@ -209,3 +211,67 @@ def write_crop_json(record: dict, path: str | Path) -> None:
 
 def read_crop_json(path: str | Path) -> dict:
     return json.loads(Path(path).expanduser().read_text())
+
+
+@dataclass(frozen=True)
+class CropExport:
+    """All settings of one crop export, checked when created."""
+
+    box: tuple[slice, slice]
+    channels: tuple[str, ...]
+    times: tuple[int, ...]
+    z: int = 0
+    raw: bool = True
+    display: bool = True
+    limits: dict | None = None  # {channel: (lo, hi)}, needed for display
+    luts: dict | None = None  # {channel: (256, 3) uint8}, needed for display
+    gamma: dict | None = None  # {channel: float}, missing → 1.0
+
+    def __post_init__(self):
+        if not self.raw and not self.display:
+            raise ValueError("nothing to export: choose raw, display or both")
+        if self.display and self.limits is None:
+            raise ValueError("display export needs limits")
+        if self.display and self.luts is None:
+            raise ValueError("display export needs luts")
+
+
+def crop_folder_name(img: Image, box: tuple[slice, slice]) -> str:
+    """{stem}_{scene}_y{y0}_x{x0}_{h}x{w}, unique per region."""
+    sy, sx = box
+    h, w = sy.stop - sy.start, sx.stop - sx.start
+    return f"{Path(img.source).stem}_{img.scene}_y{sy.start}_x{sx.start}_{h}x{w}"
+
+
+def export_crop(img: Image, settings: CropExport, folder: str | Path) -> Path:
+    """Crop img and write raw/, display/ and crop.json into folder."""
+    s = settings
+    folder = Path(folder).expanduser()
+    if folder.exists() and any(folder.iterdir()):
+        raise FileExistsError(f"{folder} already has files; choose another folder")
+
+    # checks channels, times and box — still nothing written
+    crop = crop_image(img, s.box, list(s.channels), list(s.times))
+    t_labels = list(s.times)
+    record = crop_record(
+        crop,
+        s.box,
+        t_labels,
+        z=s.z,
+        limits=s.limits if s.display else None,
+        luts=s.luts,
+        gamma=s.gamma,
+    )
+
+    # display FIRST: it checks limits/gamma/LUTs before writing anything
+    if s.display:
+        export_display(
+            crop, folder / "display", s.limits, s.luts,
+            gamma=s.gamma, z=s.z, t_labels=t_labels,
+        )
+    if s.raw:
+        colors = None if s.luts is None else {n: lut[-1] for n, lut in s.luts.items()}
+        export_tiff_planes(crop, folder / "raw", t_labels=t_labels, channel_colors=colors)
+
+    write_crop_json(record, folder / "crop.json")
+    return folder

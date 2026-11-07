@@ -1,8 +1,6 @@
 import math
-
 import dask.array as da
 import numpy as np
-
 from ferroscope.io import Image
 
 

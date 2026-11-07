@@ -1,6 +1,5 @@
 import math
 import re
-
 from ferroscope.io import Image
 
 

@@ -1,7 +1,5 @@
 from pathlib import Path
-
 import dask.array as da
-
 from ferroscope.colors import colormap_list
 from ferroscope.io import Image, describe_image, load_scene
 

@@ -1,14 +1,22 @@
 """
-The program have to import image mainly tiff, czi, and zarr.
+ferroscope.io — requirements
 
-First, the file type should be detected. Then the metadata should be displayed, including type of data, channels, time information, z stack information. Scenes information. Then the image scene by sence lazy import to mamory for further use.
+Inputs: CZI, TIFF, OME-TIFF, OME-Zarr (local paths; remote later).
 
-Should I have several
+1. Detect   – identify the format from the path; unsupported → clear error.
+2. Describe – without reading pixels, report per scene:
+              id, dim order, sizes (T, C, Z, Y, X), dtype,
+              channel names, pixel size in µm (Z, Y, X), time interval.
+              Unknown values are None — never 0 and never a fake 1.0.
+3. Load     – return one scene as a lazy dask array plus its metadata.
+              No pixel data is read until .compute().
+4. Reuse    – one opened file can be described and loaded without re-parsing.
+
+Out of scope: normalization, rechunking, export (other modules).
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
-
 import dask.array as da
 from bioio import BioImage
 
@@ -16,7 +24,7 @@ from bioio import BioImage
 @dataclass
 class Image:
     data: da.Array
-    dims: tuple[str, str, str, str, str]
+    dims: tuple[str, ...]
     channel_names: list = field(default_factory=list)
     pixel_size: tuple[float | None, float | None, float | None] = (None, None, None)
     source: str | Path | None = None

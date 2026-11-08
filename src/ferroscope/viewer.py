@@ -45,10 +45,12 @@ class SceneBrowser:
         self.colors = colors or {}
         self.scenes = [s["id"] for s in describe_image(path)["scenes"]]
         self.index = 0
+        self.image = None
 
     def go(self, index: int) -> None:
         index = index % len(self.scenes)
         img = load_scene(self.path, index)
+        self.image = img 
 
         if not self._swap_in_place(img):
             colormap = colormap_list(img.channel_names, self.colors)

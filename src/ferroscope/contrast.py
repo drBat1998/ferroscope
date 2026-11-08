@@ -55,12 +55,12 @@ def percentile_from_counts(counts, p: float) -> int:
 def channel_histogram(img: Image, c: int) -> np.ndarray:
     """Pixel-value counts of channel c over all T, Z, Y, X. Lazy, chunk by chunk."""
 
-    n_channels = img.dask_data.shape[1]
+    n_channels = img.data.shape[1]
 
     if not 0 <= c < n_channels:
         raise ValueError(f"channel {c} out of range, image has {n_channels}")
 
-    data = img.dask_data[:, c]
+    data = img.data[:, c]
 
     if not np.issubdtype(data.dtype, np.unsignedinteger):
         raise ValueError(f"need unsigned integer pixels, got {data.dtype}")
@@ -82,11 +82,11 @@ def shared_contrast(
     if low >= high:
         raise ValueError(f"low must be < high, got low={low}, high={high}")
 
-    ref = images[0].dask_data
+    ref = images[0].data
     n_channels = ref.shape[1]
 
     for i, image in enumerate(images):
-        data = image.dask_data
+        data = image.data
         if data.shape[1] != n_channels:
             raise ValueError(
                 f"image {i} has {data.shape[1]} channels, image 0 has {n_channels}"

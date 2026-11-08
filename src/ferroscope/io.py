@@ -1,30 +1,90 @@
+"""Lazy loading of microscopy images and their metadata.
+
+Supported files: .czi, .tif/.tiff, .ome.tif/.ome.tiff, .zarr (OME-Zarr only).
+
+Public functions:
+    detect_format(path)         -> format name, decided by file extension.
+    describe_image(path)        -> metadata for every scene, no pixels read.
+    load_scene(path, scene=0)   -> one scene as an Image; scene by index or id.
+
+Every Image guarantees:
+    - data is a lazy dask array; pixels are read from disk only on compute.
+    - axes are in TCZYX order (plus S for RGB files).
+    - physical sizes are in µm.
+    - unknown pixel sizes are None, never 0.
+
+This module only reads files. Display, export and analysis live in other
+modules that import io, never the other way round.
 """
-The program have to import image mainly tiff, czi, and zarr.
 
-First, the file type should be detected. Then the metadata should be displayed, including type of data, channels, time information, z stack information. Scenes information. Then the image scene by sence lazy import to mamory for further use.
-
-Should I have several
-"""
-
-from dataclasses import dataclass, field
+# import packages:
+from dataclasses import dataclass
 from pathlib import Path
 
 import dask.array as da
 from bioio import BioImage
 
+VALID_DIMS = frozenset("TCZYXS")
+
+
+def _check_positive_or_none(name: str, value: float | None) -> None:
+    if value is not None and not value > 0:
+        raise ValueError(f"{name} must be > 0 or None, got {value!r}")
+
+VALID_DIMS = frozenset("TCZYXS")
+
+
+def _check_positive_or_none(name: str, value: float | None) -> None:
+    if value is not None and not value > 0:
+        raise ValueError(f"{name} must be > 0 or None, got {value!r}")
+
 
 @dataclass
 class Image:
+    """One scene of a microscopy image, loaded lazily.
+
+    Units: physical sizes in µm, times in seconds.
+    Unknown sizes or intervals are None, never 0.
+    """
+
     data: da.Array
-    dims: tuple[str, str, str, str, str]
-    channel_names: list = field(default_factory=list)
-    pixel_size: tuple[float | None, float | None, float | None] = (None, None, None)
-    source: str | Path | None = None
+    dims: tuple[str, ...]
+    channel_names: list[str]
+    pixel_size_um: tuple[float | None, float | None, float | None] = (None, None, None)
+    time_interval_s: float | None = None
+    source: Path | None = None
     scene: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        self._check_dims()
+        self._check_channels()
+        if len(self.pixel_size_um) != 3:
+            raise ValueError(f"pixel_size_um must be (z, y, x), got {self.pixel_size_um!r}")
+        for axis, value in zip("ZYX", self.pixel_size_um):
+            _check_positive_or_none(f"pixel size {axis}", value)
+        _check_positive_or_none("time_interval_s", self.time_interval_s)
+
+    def _check_dims(self) -> None:
         if len(self.dims) != self.data.ndim:
-            raise ValueError("Dims is not good")
+            raise ValueError(
+                f"dims {self.dims!r} has {len(self.dims)} axes, "
+                f"but data has {self.data.ndim} (shape {self.data.shape})"
+            )
+        unknown = set(self.dims) - VALID_DIMS
+        if unknown:
+            raise ValueError(f"unknown dims {sorted(unknown)} in {self.dims!r}; allowed: T C Z Y X S")
+        if len(set(self.dims)) != len(self.dims):
+            raise ValueError(f"duplicate dims in {self.dims!r}")
+
+    def _check_channels(self) -> None:
+        if self.channel_axis is None:
+            return
+        n = self.data.shape[self.channel_axis]
+        if len(self.channel_names) != n:
+            raise ValueError(
+                f"{len(self.channel_names)} channel names {self.channel_names!r} "
+                f"for {n} channels on the C axis"
+            )
 
     @property
     def channel_axis(self) -> int | None:
@@ -32,11 +92,17 @@ class Image:
 
     @property
     def axis_scale(self) -> dict[str, float]:
-        """µm per pixel for every axis; 1.0 where unknown or non-spatial (T, C)."""
-        z, y, x = self.pixel_size
-        lookup = {"Z": z, "Y": y, "X": x}
-        return {d: (lookup.get(d) or 1.0) for d in self.dims}
+        """Step per axis: µm for Z/Y/X, seconds for T; 1.0 where unknown, and for C and S."""
+        z, y, x = self.pixel_size_um
+        lookup = {"T": self.time_interval_sinterval_s, "Z": z, "Y": y, "X": x}
+        return {d: lookup.get(d) or 1.0 for d in self.dims}
 
+FORMATS = [(".ome.tiff", "ome-tiff"),
+        (".ome.tif", "ome-tiff"),
+        (".tiff", "tiff"),
+        (".tif", "tiff"),
+        (".czi", "czi"),
+        (".zarr", "zarr"),]
 
 def detect_format(path: str | Path) -> str:
     """
@@ -44,21 +110,12 @@ def detect_format(path: str | Path) -> str:
     Raises ValueError for anything else.
     """
     file_path = Path(path)
-
-    FORMATS = [
-        (".ome.tiff", "ome-tiff"),
-        (".ome.tif", "ome-tiff"),
-        (".tiff", "tiff"),
-        (".tif", "tiff"),
-        (".czi", "czi"),
-        (".zarr", "zarr"),
-    ]
+   
     for ending, name in FORMATS:
         if file_path.name.lower().endswith(ending):
             return name
     raise ValueError(
-        f"unsupported format: {file_path.name!r} (supported: .czi, .tif, .tiff, .ome.tif, .zarr)"
-    )
+        f"unsupported format: {file_path.name!r} (supported: {', '.join([ending for ending, name in FORMATS])})")
 
 
 def _um(value):

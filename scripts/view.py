@@ -22,7 +22,7 @@ def ask_colors(channel_names: list[str]) -> dict[str, str]:
     return colors
 
 
-path = "~/data/OGD_but/PL1_live.czi"
+path = ""
 
 first = load_scene(path, 0)  # only to learn the channel names
 colors = ask_colors(first.channel_names)

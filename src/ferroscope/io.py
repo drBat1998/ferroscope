@@ -228,3 +228,12 @@ def load_scene(path: str | Path, scene: int | str = 0) -> Image:
     path_file, _, bio = _open(path)
     _set_scene(bio, scene, path_file)
     return _image_from(bio, path_file)
+
+if __name__ == "__main__":
+    path = "~/data/OGD_but/PL1_live.czi"
+    img = BioImage("~/data/OGD_but/PL1_live.czi")
+    example = img.dask_data
+    print(example.chunksize, example.dtype)
+    print( load_scene(path).data.chunksize,load_scene(path).data.dtype)
+
+

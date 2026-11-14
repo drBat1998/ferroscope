@@ -1,6 +1,8 @@
-from ferroscope.io import load_scene
-from ome_zarr.writer import write_image
 import time
+
+from ome_zarr.writer import write_image
+
+from ferroscope.io import load_scene
 
 img = load_scene("~/data/Tox/78_tox.czi", scene = 0)
 print(img.data.shape)

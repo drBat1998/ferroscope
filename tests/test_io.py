@@ -1,16 +1,17 @@
-import dask.array as da
-from dask.callbacks import Callback
-import re
-from ferroscope.io import Image, _open , _um, _seconds, load_scene, describe_image
-import pytest
-import numpy as np
-
 import dataclasses
-import bioio_ome_tiff 
-import tifffile 
-from bioio import BioImage 
-
+import re
 from datetime import timedelta
+
+import bioio_ome_tiff
+import dask.array as da
+import numpy as np
+import pytest
+import tifffile
+from bioio import BioImage
+from dask.callbacks import Callback
+
+from ferroscope.io import Image, _open, _seconds, _um, describe_image, load_scene
+
 
 def make_image(**overrides) -> Image:
     """A valid Image; each test overrides only the field it checks."""

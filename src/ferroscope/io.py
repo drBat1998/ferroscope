@@ -28,13 +28,14 @@ modules that import io, never the other way round.
 """
 
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
-import dask.array as da
-from bioio import BioImage
+
 import bioio_czi
 import bioio_ome_tiff
 import bioio_ome_zarr
-from datetime import timedelta
+import dask.array as da
+from bioio import BioImage
 
 DIMS = ("T", "C", "Z", "Y", "X")
 

@@ -1,5 +1,5 @@
-import numpy as np
 import napari
+import numpy as np
 from bioio import BioImage
 
 OFFSET = 100.0  # replace with your dark-frame median

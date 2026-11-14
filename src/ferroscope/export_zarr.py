@@ -3,10 +3,9 @@ CZI -> OME-Zarr export for ferroscope.
 
 """
 
-from ome_zarr import OMEZarrImage, OMEZarrMultiscale
 import numpy as np
 import zarr
-
+from ome_zarr import OMEZarrImage, OMEZarrMultiscale
 from ome_zarr.writer import write_image, write_plate_metadata, write_well_metadata
 
 path = "test_ngff_plate.zarr"

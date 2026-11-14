@@ -74,7 +74,7 @@ def export_tiff_planes(
             path,
             dim_order="YX",
             channel_names=[channel],
-            physical_pixel_sizes=PhysicalPixelSizes(*img.pixel_size),
+            physical_pixel_sizes=PhysicalPixelSizes(*img.pixel_size_um),
             **extra,
         )
         written.append(path)
@@ -178,7 +178,7 @@ def crop_record(
         raise ValueError(f"box is {h} x {w} px, crop is {n_y} x {n_x} px")
 
     # 3. the same box in µm, only when the pixel size is known
-    pz, py, px = crop.pixel_size
+    pz, py, px = crop.pixel_size_um
     box_um = None
     if py is not None and px is not None:
         box_um = {

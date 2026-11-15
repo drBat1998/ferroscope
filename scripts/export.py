@@ -2,7 +2,7 @@
 
 Channel names come from the file. Contrast limits are computed once from ALL
 scenes (shared_contrast) and cached in {stem}_limits.json next to the CZI.
-Edit the block below, then:  python scripts/export_trials.py
+Edit the block below, then:  python scripts/export.py
 """
 
 import json
@@ -18,12 +18,12 @@ from ferroscope.export import export_plate
 from ferroscope.io import describe_image, load_scene
 
 # --- edit here -------------------------------------------------------------
-DATA = Path("~/data/OGD_but/PL1_live.czi").expanduser()  # your CZI
-SCENES = [0, 1]  # scenes to export; the limits still use ALL scenes
+DATA = Path("~/data/Pl1_IHC_LC3_v1.czi").expanduser()  # your CZI
+SCENES = None  # scenes to export; the limits still use ALL scenes
 LOW_P, HIGH_P = 0.1, 99.9  # percentiles for the shared contrast
 COLOR_OVERRIDES = {}  # {channel name: colormap}; others: magenta, cyan, yellow…
-RUN = ["raw_ome", "raw_imagej", "8bit_png"]  # presets to try (see make_presets)
-CHANNELS = None  # e.g. ["AF488"]; None = all; names as printed below
+RUN = ["8bit_png"] #["raw_ome", "raw_imagej", "8bit_png"]  # presets to try (see make_presets)
+CHANNELS = ["AF647","AF488"]  # e.g. ["AF488"]; None = all; names as printed below
 # ---------------------------------------------------------------------------
 
 OUT = DATA.parent / f"{DATA.stem}_trials"
@@ -83,8 +83,12 @@ def plate_limits(images: list, names: list[str]) -> dict:
 
 
 def main() -> None:
-    dask.config.set(num_workers=2)  # shared_contrast: 2 threads, not all cores
+    dask.config.set(num_workers=8)  # shared_contrast: 2 threads, not all cores
     images, names = load_all_scenes(DATA)
+    if CHANNELS is not None:
+        unknown = [c for c in CHANNELS if c not in names]
+        if unknown:
+            raise SystemExit(f"unknown channels {unknown}; file has {names}")
     limits = plate_limits(images, names)
     colors = colormap_list(names, COLOR_OVERRIDES)
     luts = {name: lut_from_colormap(c) for name, c in zip(names, colors)}
@@ -103,7 +107,9 @@ def main() -> None:
             print(f"{preset:14s} skipped: {out} already has files")
             continue
         start = time.perf_counter()
-        paths = export_plate(DATA, out, scenes=SCENES, **presets[preset])
+        paths = export_plate(
+            DATA, out, scenes=SCENES, channels=CHANNELS, **presets[preset]
+        )
         seconds = time.perf_counter() - start
         mb = sum(p.stat().st_size for p in paths) / 1e6
         print(f"{preset:14s} {len(paths):4d} files  {mb:8.1f} MB  {seconds:6.1f} s")

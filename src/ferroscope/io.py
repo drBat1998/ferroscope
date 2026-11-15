@@ -27,7 +27,7 @@ This module only reads files. Display, export and analysis live in other
 modules that import io, never the other way round.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from pathlib import Path
 
@@ -59,6 +59,21 @@ class Image:
     time_interval_s: float | None = None
     source: Path | None = None
     scene: str | None = None
+
+    def select_channels(self, names) -> "Image":
+        """A new Image with only these channels, in the order given. Lazy."""
+        names = list(names)
+        if not names:
+            raise ValueError("choose at least one channel")
+        unknown = [n for n in names if n not in self.channel_names]
+        if unknown:
+            raise ValueError(
+                f"unknown channels {unknown}; file has {list(self.channel_names)}"
+            )
+        if len(set(names)) != len(names):
+            raise ValueError(f"channel listed twice: {names}")
+        idx = [self.channel_names.index(n) for n in names]
+        return replace(self, data=self.data[:, idx], channel_names=tuple(names))
 
     def __post_init__(self) -> None:
         if not isinstance(self.data, da.Array):
